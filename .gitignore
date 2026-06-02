@@ -1,0 +1,14 @@
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+assets/Rituals.iconset/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store

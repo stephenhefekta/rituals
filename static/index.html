@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rituals</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f6f7fb; }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .fade-up { animation: fadeUp .3s ease forwards; }
+
+    .card { background:#fff; border:1px solid #e7e9f0; border-radius:16px; }
+    .accent { background: linear-gradient(135deg,#eef2ff,#f5f3ff); border:1px solid #c7d2fe; }
+    .accent-win { background: linear-gradient(135deg,#fffbeb,#fef3c7); border:1px solid #fde68a; }
+
+    input:focus, textarea:focus { outline:none; box-shadow:0 0 0 3px rgba(99,102,241,.18); border-color:#a5b4fc; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+
+    /* Custom checkbox */
+    .check {
+      width:26px; height:26px; border-radius:9px; border:2px solid #cbd5e1;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      cursor:pointer; transition:all .15s; background:#fff;
+    }
+    .check:hover { border-color:#818cf8; }
+    .check.done { background:#10b981; border-color:#10b981; }
+    .check svg { opacity:0; transform:scale(.6); transition:all .15s; }
+    .check.done svg { opacity:1; transform:scale(1); }
+
+    .pill { font-size:11px; font-weight:600; padding:2px 9px; border-radius:999px; }
+
+    .ring { transition: stroke-dashoffset .4s ease; }
+  </style>
+</head>
+<body class="text-slate-800">
+  <div class="max-w-2xl mx-auto px-5 py-8">
+
+    <!-- Header -->
+    <header class="mb-7">
+      <div class="flex items-center gap-3">
+        <div class="flex gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+        </div>
+        <h1 class="text-2xl font-extrabold tracking-tight">Rituals</h1>
+      </div>
+      <p class="text-slate-500 text-sm mt-1.5">Set your top three every Sunday, capture a win every Friday — and keep the whole history.</p>
+    </header>
+
+    <!-- This week's priorities / entry form -->
+    <section id="current" class="mb-6"></section>
+
+    <!-- This week's win / entry form -->
+    <section id="win-current" class="mb-8"></section>
+
+    <!-- Priorities archive -->
+    <section id="archive" class="mb-8">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Priorities archive</h2>
+        <span id="archive-stats" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="archive-list" class="space-y-3"></div>
+    </section>
+
+    <!-- Wins archive -->
+    <section id="win-archive">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Wins archive</h2>
+        <span id="win-archive-stats" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="win-archive-list" class="space-y-3"></div>
+    </section>
+  </div>
+
+<script>
+const API = '';
+let WEEKS = [];
+let WINS = [];
+let editingWeek = false, editingWin = false;
+
+// ---------- date helpers ----------
+function mondayOf(d) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7; // Mon=0 .. Sun=6
+  x.setDate(x.getDate() - day);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function isoWeekId(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - day + 3);
+  const firstThu = new Date(Date.UTC(date.getUTCFullYear(),0,4));
+  const week = 1 + Math.round(((date - firstThu)/86400000 - 3 + ((firstThu.getUTCDay()+6)%7))/7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
+}
+function fmtDate(iso) {
+  return new Date(iso+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
+
+// "Week ahead": on Sunday we plan next week; otherwise the current week.
+function targetWeekStart() {
+  const now = new Date();
+  const base = now.getDay() === 0 ? new Date(now.getTime()+86400000) : now; // Sun -> next week
+  return mondayOf(base);
+}
+
+// A win is reflective, so it always belongs to the current (in-progress) week.
+function winWeekStart() {
+  return mondayOf(new Date());
+}
+
+function toIsoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ---------- api ----------
+async function load() {
+  const [wr, winr] = await Promise.all([
+    fetch(API+'/api/weeks'),
+    fetch(API+'/api/wins'),
+  ]);
+  WEEKS = (await wr.json()).weeks;
+  WINS = (await winr.json()).wins;
+  render();
+}
+async function api(method, url, body) {
+  const r = await fetch(API+url, {
+    method,
+    headers: body ? {'Content-Type':'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(()=>({detail:'Request failed'}));
+    throw new Error(e.detail || 'Request failed');
+  }
+  return r.json();
+}
+
+// ---------- render ----------
+function checkSvg() {
+  return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+}
+
+function progressRing(done, total) {
+  const r = 16, c = 2*Math.PI*r;
+  const off = total ? c*(1 - done/total) : c;
+  const color = done===total ? '#10b981' : '#6366f1';
+  return `<svg width="44" height="44" viewBox="0 0 44 44" class="-rotate-90">
+    <circle cx="22" cy="22" r="${r}" fill="none" stroke="#eef0f5" stroke-width="4"/>
+    <circle class="ring" cx="22" cy="22" r="${r}" fill="none" stroke="${color}" stroke-width="4"
+      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"/>
+  </svg>`;
+}
+
+function priorityRow(week, p, idx, editable) {
+  const done = p.done;
+  return `<div class="flex items-start gap-3 py-2.5 fade-up">
+    <div class="check ${done?'done':''}" onclick="toggle('${week.id}',${idx})">${checkSvg()}</div>
+    <div class="flex-1 min-w-0">
+      <div class="text-[15px] leading-snug ${done?'line-through text-slate-400':'text-slate-800'}">${escapeHtml(p.text)}</div>
+      ${done && p.done_at ? `<div class="text-[11px] text-emerald-600 mt-0.5">Done ${new Date(p.done_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>` : ''}
+    </div>
+    <div class="text-slate-300 font-bold text-sm pt-0.5">${idx+1}</div>
+  </div>`;
+}
+
+function renderCurrent() {
+  const el = document.getElementById('current');
+  const wid = isoWeekId(targetWeekStart());
+  const existing = WEEKS.find(w => w.id === wid);
+
+  if (existing) {
+    el.innerHTML = currentCard(existing);
+  } else {
+    el.innerHTML = entryForm();
+  }
+}
+
+function currentCard(week) {
+  if (editingWeek) return currentCardEditing(week);
+  const rows = week.priorities.map((p,i)=>priorityRow(week,p,i,false)).join('');
+  const complete = week.done_count === week.total;
+  return `<div class="accent rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <div class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-indigo-100 text-indigo-700'}">THIS WEEK</div>
+        <h2 class="text-lg font-bold mt-1.5">${week.label}</h2>
+      </div>
+      <div class="flex items-center gap-2 text-slate-500">
+        ${progressRing(week.done_count, week.total)}
+        <span class="text-sm font-semibold">${week.done_count}/${week.total}</span>
+      </div>
+    </div>
+    <div class="divide-y divide-indigo-100/70 mt-2">${rows}</div>
+    ${complete?`<div class="text-center text-emerald-600 text-sm font-semibold mt-3">🎉 All three done — strong week.</div>`:''}
+    <div class="flex justify-end mt-3">
+      <button onclick="startWeekEdit()" class="text-xs font-semibold text-indigo-500 hover:text-indigo-700 transition">Edit priorities</button>
+    </div>
+  </div>`;
+}
+
+function currentCardEditing(week) {
+  return `<div class="accent rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="pill bg-indigo-100 text-indigo-700">EDIT PRIORITIES</div>
+        <h2 class="text-lg font-bold mt-1.5">${week.label}</h2>
+      </div>
+    </div>
+    <div class="space-y-2.5">
+      ${week.priorities.map((p,i)=>`<div class="flex items-center gap-3">
+        <span class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+        <input id="ep${i}" type="text" value="${escapeHtml(p.text)}" maxlength="200"
+          class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-white"
+          onkeydown="if(event.key==='Enter'){const n=document.getElementById('ep'+${i+1});n?n.focus():saveWeekEdits('${week.id}');}if(event.key==='Escape')cancelWeekEdit();"/>
+      </div>`).join('')}
+    </div>
+    <div id="edit-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="saveWeekEdits('${week.id}')" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition">Save</button>
+      <button onclick="cancelWeekEdit()" class="px-5 bg-white border border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function entryForm() {
+  const ws = targetWeekStart();
+  const label = `${ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${new Date(ws.getTime()+6*86400000).toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+  return `<div class="card p-5 fade-up">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-lg">Set this week's top 3</h2>
+      <div class="flex items-center gap-2">
+        ${new Date().getDay()===0 ? `<span class="pill bg-indigo-100 text-indigo-700">🔔 Due today</span>` : ''}
+        <span class="text-xs text-slate-400">${label}</span>
+      </div>
+    </div>
+    <div class="space-y-2.5">
+      ${[0,1,2].map(i=>`<div class="flex items-center gap-3">
+        <span class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+        <input id="p${i}" type="text" placeholder="Priority ${i+1}…" maxlength="200"
+          class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60"
+          onkeydown="if(event.key==='Enter'){const n=document.getElementById('p'+${i+1});n?n.focus():submitWeek();}"/>
+      </div>`).join('')}
+    </div>
+    <div id="form-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <button onclick="submitWeek()" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition">
+      Lock in priorities
+    </button>
+  </div>`;
+}
+
+// ---------- archive grouping (Year > Month) ----------
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+// Group date-stamped items (already sorted newest-first) into collapsible
+// Year > Month sections. The newest year and its newest month start expanded;
+// everything older stays collapsed so the history doesn't sprawl.
+// `renderItem(item)` draws one card. Named Tailwind groups (group/y, group/m)
+// keep each level's chevron independent of the item cards' own `group`.
+function groupedArchiveHtml(items, renderItem) {
+  const years = [], yIndex = {};
+  for (const it of items) {
+    const d = new Date(it.week_start + 'T00:00:00');
+    const y = d.getFullYear(), m = d.getMonth();
+    if (yIndex[y] === undefined) { yIndex[y] = years.length; years.push({year:y, months:[], mIndex:{}}); }
+    const yr = years[yIndex[y]];
+    if (yr.mIndex[m] === undefined) { yr.mIndex[m] = yr.months.length; yr.months.push({month:m, items:[]}); }
+    yr.months[yr.mIndex[m]].items.push(it);
+  }
+
+  return years.map((yr, yIdx) => {
+    const yCount = yr.months.reduce((s,mo)=>s+mo.items.length, 0);
+    const months = yr.months.map((mo, mIdx) => {
+      const open = (yIdx===0 && mIdx===0) ? ' open' : '';
+      return `<details class="group/m"${open}>
+        <summary class="flex items-center justify-between py-2 px-1 cursor-pointer select-none list-none">
+          <span class="text-sm font-semibold text-slate-600">${MONTHS[mo.month]}</span>
+          <span class="flex items-center gap-2 text-slate-400">
+            <span class="text-xs">${mo.items.length}</span>
+            <svg class="w-3.5 h-3.5 transition-transform group-open/m:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </summary>
+        <div class="space-y-3 pb-1 px-1">${mo.items.map(renderItem).join('')}</div>
+      </details>`;
+    }).join('');
+    const open = yIdx===0 ? ' open' : '';
+    return `<details class="card overflow-hidden group/y"${open}>
+      <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none">
+        <span class="font-bold text-[15px]">${yr.year}</span>
+        <span class="flex items-center gap-2 text-slate-400">
+          <span class="text-xs">${yCount}</span>
+          <svg class="w-4 h-4 transition-transform group-open/y:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </summary>
+      <div class="px-3 pb-3 pt-1 border-t border-slate-100 space-y-1">${months}</div>
+    </details>`;
+  }).join('');
+}
+
+function weekCard(w) {
+  const complete = w.done_count===w.total;
+  const rows = w.priorities.map((p,i)=>priorityRow(w,p,i,false)).join('');
+  return `<details class="card overflow-hidden group">
+    <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-slate-100 text-slate-500'}">${w.done_count}/${w.total}</span>
+        <span class="font-semibold text-[15px] truncate">${w.label}</span>
+      </div>
+      <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <div class="px-4 pb-3 pt-1 border-t border-slate-100 divide-y divide-slate-100">${rows}</div>
+    <div class="px-4 pb-3 flex justify-end">
+      <button onclick="delWeek('${w.id}')" class="text-xs text-slate-400 hover:text-rose-500 transition">Delete week</button>
+    </div>
+  </details>`;
+}
+
+function renderArchive() {
+  const wid = isoWeekId(targetWeekStart());
+  const past = WEEKS.filter(w => w.id !== wid);
+  const list = document.getElementById('archive-list');
+  const stats = document.getElementById('archive-stats');
+
+  if (!past.length) {
+    list.innerHTML = `<div class="text-slate-400 text-sm py-6 text-center card">No archived weeks yet. Your history will build here week by week.</div>`;
+    stats.textContent = '';
+    return;
+  }
+
+  const totalDone = past.reduce((s,w)=>s+w.done_count,0);
+  const totalAll = past.reduce((s,w)=>s+w.total,0);
+  stats.textContent = `${past.length} week${past.length>1?'s':''} · ${totalDone}/${totalAll} completed`;
+
+  list.innerHTML = groupedArchiveHtml(past, weekCard);
+}
+
+// ---------- wins ----------
+function winCard(win) {
+  if (editingWin) return winCardEditing(win);
+  return `<div class="accent-win rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <div class="pill bg-amber-100 text-amber-700">THIS WEEK'S WIN</div>
+        <h2 class="text-lg font-bold mt-1.5">${win.label}</h2>
+      </div>
+      <span class="text-2xl leading-none">🏆</span>
+    </div>
+    <p class="text-[15px] leading-snug text-slate-800">${escapeHtml(win.text)}</p>
+    <div class="flex justify-end mt-3">
+      <button onclick="startWinEdit()" class="text-xs font-semibold text-amber-600 hover:text-amber-700 transition">Edit win</button>
+    </div>
+  </div>`;
+}
+
+function winCardEditing(win) {
+  return `<div class="accent-win rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="pill bg-amber-100 text-amber-700">EDIT WIN</div>
+        <h2 class="text-lg font-bold mt-1.5">${win.label}</h2>
+      </div>
+      <span class="text-2xl leading-none">🏆</span>
+    </div>
+    <textarea id="ewin" rows="3" maxlength="500"
+      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-white resize-none"
+      onkeydown="if(event.key==='Escape')cancelWinEdit();">${escapeHtml(win.text)}</textarea>
+    <div id="ewin-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <div class="flex gap-2 mt-3">
+      <button onclick="saveWinEdit('${win.id}')" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl transition">Save</button>
+      <button onclick="cancelWinEdit()" class="px-5 bg-white border border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function winForm() {
+  const ws = winWeekStart();
+  const label = `${ws.toLocaleDateString(undefined,{month:'short',day:'numeric'})} – ${new Date(ws.getTime()+6*86400000).toLocaleDateString(undefined,{month:'short',day:'numeric'})}`;
+  return `<div class="card p-5 fade-up">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="font-bold text-lg">Capture this week's win 🏆</h2>
+      <div class="flex items-center gap-2">
+        ${new Date().getDay()===5 ? `<span class="pill bg-amber-100 text-amber-700">🔔 Due today</span>` : ''}
+        <span class="text-xs text-slate-400">${label}</span>
+      </div>
+    </div>
+    <p class="text-slate-500 text-sm mb-3">Every Friday, note one thing that went well.</p>
+    <textarea id="win-text" rows="3" maxlength="500" placeholder="This week I…"
+      class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60 resize-none"></textarea>
+    <div id="win-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <button onclick="submitWin()" class="mt-3 w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2.5 rounded-xl transition">
+      Save win
+    </button>
+  </div>`;
+}
+
+function renderWinCurrent() {
+  const el = document.getElementById('win-current');
+  const wid = isoWeekId(winWeekStart());
+  const existing = WINS.find(w => w.id === wid);
+  el.innerHTML = existing ? winCard(existing) : winForm();
+}
+
+function renderWinArchive() {
+  const wid = isoWeekId(winWeekStart());
+  const past = WINS.filter(w => w.id !== wid);
+  const list = document.getElementById('win-archive-list');
+  const stats = document.getElementById('win-archive-stats');
+
+  if (!past.length) {
+    list.innerHTML = `<div class="text-slate-400 text-sm py-6 text-center card">No wins archived yet. Friday by Friday, they'll stack up here.</div>`;
+    stats.textContent = '';
+    return;
+  }
+
+  stats.textContent = `${past.length} win${past.length>1?'s':''}`;
+  list.innerHTML = groupedArchiveHtml(past, winRow);
+}
+
+function winRow(w) {
+  return `<details class="card overflow-hidden group">
+    <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-lg">🏆</span>
+        <span class="font-semibold text-[15px] truncate">${w.label}</span>
+      </div>
+      <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <div class="px-4 pb-3 pt-3 border-t border-slate-100 text-[15px] leading-snug text-slate-700">${escapeHtml(w.text)}</div>
+    <div class="px-4 pb-3 flex justify-end">
+      <button onclick="delWin('${w.id}')" class="text-xs text-slate-400 hover:text-rose-500 transition">Delete win</button>
+    </div>
+  </details>`;
+}
+
+function render() { renderCurrent(); renderWinCurrent(); renderArchive(); renderWinArchive(); }
+
+// ---------- actions ----------
+async function submitWeek() {
+  const err = document.getElementById('form-err');
+  const vals = [0,1,2].map(i=>document.getElementById('p'+i).value.trim());
+  if (vals.some(v=>!v)) {
+    err.textContent = 'Please fill in all three priorities.';
+    err.classList.remove('hidden');
+    return;
+  }
+  err.classList.add('hidden');
+  const ws = targetWeekStart();
+  const week_start = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`;
+  try {
+    await api('POST','/api/weeks',{week_start, priorities: vals});
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function toggle(wid, idx) {
+  // optimistic
+  const w = WEEKS.find(x=>x.id===wid);
+  if (w) { const p=w.priorities[idx]; p.done=!p.done; p.done_at=p.done?new Date().toISOString():null;
+    w.done_count = w.priorities.filter(x=>x.done).length; render(); }
+  try { await api('POST',`/api/weeks/${wid}/priorities/${idx}/toggle`); await load(); }
+  catch(e){ load(); }
+}
+
+function startWeekEdit() { editingWeek = true; renderCurrent(); document.getElementById('ep0')?.focus(); }
+function cancelWeekEdit() { editingWeek = false; renderCurrent(); }
+
+async function saveWeekEdits(wid) {
+  const w = WEEKS.find(x=>x.id===wid);
+  const err = document.getElementById('edit-err');
+  const vals = [0,1,2].map(i=>document.getElementById('ep'+i).value.trim());
+  if (vals.some(v=>!v)) {
+    err.textContent = 'Priorities can’t be empty.';
+    err.classList.remove('hidden');
+    return;
+  }
+  try {
+    for (let i=0;i<3;i++) {
+      if (vals[i] !== w.priorities[i].text) await api('PATCH',`/api/weeks/${wid}/priorities/${i}`,{text:vals[i]});
+    }
+    editingWeek = false;
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function delWeek(wid) {
+  if (!confirm('Delete this week from the archive? This cannot be undone.')) return;
+  try { await api('DELETE',`/api/weeks/${wid}`); await load(); }
+  catch(e){ alert(e.message); }
+}
+
+async function submitWin() {
+  const err = document.getElementById('win-err');
+  const text = document.getElementById('win-text').value.trim();
+  if (!text) {
+    err.textContent = 'Write your win first.';
+    err.classList.remove('hidden');
+    return;
+  }
+  err.classList.add('hidden');
+  const week_start = toIsoDate(winWeekStart());
+  try {
+    await api('POST','/api/wins',{week_start, text});
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+function startWinEdit() { editingWin = true; renderWinCurrent(); const t=document.getElementById('ewin'); if(t){t.focus(); t.setSelectionRange(t.value.length, t.value.length);} }
+function cancelWinEdit() { editingWin = false; renderWinCurrent(); }
+
+async function saveWinEdit(wid) {
+  const err = document.getElementById('ewin-err');
+  const text = document.getElementById('ewin').value.trim();
+  if (!text) {
+    err.textContent = 'Write your win first.';
+    err.classList.remove('hidden');
+    return;
+  }
+  try {
+    await api('PATCH',`/api/wins/${wid}`,{text});
+    editingWin = false;
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function delWin(wid) {
+  if (!confirm('Delete this win from the archive? This cannot be undone.')) return;
+  try { await api('DELETE',`/api/wins/${wid}`); await load(); }
+  catch(e){ alert(e.message); }
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+load();
+</script>
+</body>
+</html>
