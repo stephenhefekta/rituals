@@ -27,6 +27,30 @@ Everything is stored in **Supabase** (Postgres), so your priorities and wins syn
 
 On any additional computer, just install the deps and add the same `.env` — no migration needed; it reads the shared cloud data.
 
+## Use on a second computer (installed .app)
+
+The credentials are **not** bundled inside `Rituals.app` — it reads them from
+`~/.rituals/.env`. So copying just the app over gives you an empty screen (no
+history) until you add that file. You do **not** need the project folder.
+
+1. Copy `Rituals.app` to the other Mac (into `/Applications`).
+2. Create the credentials file (Terminal):
+   ```bash
+   mkdir -p ~/.rituals && cat > ~/.rituals/.env <<'EOF'
+   SUPABASE_URL=https://YOUR-PROJECT-ref.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   EOF
+   chmod 600 ~/.rituals/.env
+   ```
+3. Quit and relaunch Rituals — your history appears, synced from the cloud.
+
+> An empty screen means the app can't reach Supabase: missing/typo'd
+> `~/.rituals/.env`, no internet (the app requires a connection), or a `SUPABASE_URL`
+> that still has a trailing `/rest/v1/` (it shouldn't).
+
+`store.py` reads credentials from both the project-folder `.env` (dev runs) and
+`~/.rituals/.env` (the installed app).
+
 ## Run in dev
 
 ```bash
