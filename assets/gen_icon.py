@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the Rituals app icon (icon.icns): a flat, stylised sunset — a
-burnt-orange sun on a horizon line with a ray fan above, on a warm cream tile
-(WisprFlow-style: bold, flat, no gradients). Supersampled 2x for clean edges.
+"""Generate the Rituals app icon (icon.icns): a flat, stylised sunrise — an
+amber half-sun (dome) rising over a broken horizon line, with a ray fan above,
+on a warm cream tile (bold, flat, no gradients). Supersampled 2x for clean
+edges. Modelled on ~/Downloads/Sunrise.png but redrawn crisp and watermark-free.
 
 Run from anywhere:  python3 assets/gen_icon.py
 Produces:  assets/icon_1024.png  and  icon.icns (project root)
@@ -21,7 +22,7 @@ MARGIN = 96 * SS
 RADIUS = round((S - 2 * MARGIN) * 0.2237)
 
 CREAM = (243, 240, 226)
-SUNSET = (224, 85, 46)        # burnt-orange
+AMBER = (255, 182, 0)         # golden amber sampled from Sunrise.png
 
 
 def build_master() -> Image.Image:
@@ -31,27 +32,43 @@ def build_master() -> Image.Image:
     d = ImageDraw.Draw(content)
 
     cx = w // 2
-    horizon = int(h * 0.60)
-    R = int(w * 0.20)
+    horizon = int(h * 0.62)       # the line the sun rises from
+    R = int(w * 0.21)             # dome radius
+    fill = AMBER + (255,)
 
-    # Ray fan over the sun's upper half.
-    for ang in range(-155, -24, 18):
-        a = math.radians(ang)
-        x1, y1 = cx + (R + w * 0.05) * math.cos(a), horizon + (R + w * 0.05) * math.sin(a)
-        x2, y2 = cx + (R + w * 0.135) * math.cos(a), horizon + (R + w * 0.135) * math.sin(a)
-        d.line([(x1, y1), (x2, y2)], fill=SUNSET + (255,), width=int(w * 0.026))
-        for px, py in ((x1, y1), (x2, y2)):  # round the ray caps
-            r = int(w * 0.013)
-            d.ellipse([px - r, py - r, px + r, py + r], fill=SUNSET + (255,))
+    # Ray fan over the dome: 5 thick rounded spokes radiating from the sun
+    # centre, spanning the upper hemisphere (math degrees, 0=right, 90=up).
+    inner = R + w * 0.055
+    outer = R + w * 0.165
+    ray_w = int(w * 0.05)
+    cap = ray_w // 2
+    for deg in (18, 54, 90, 126, 162):
+        a = math.radians(deg)
+        x1, y1 = cx + inner * math.cos(a), horizon - inner * math.sin(a)
+        x2, y2 = cx + outer * math.cos(a), horizon - outer * math.sin(a)
+        d.line([(x1, y1), (x2, y2)], fill=fill, width=ray_w)
+        for px, py in ((x1, y1), (x2, y2)):   # round the spoke caps
+            d.ellipse([px - cap, py - cap, px + cap, py + cap], fill=fill)
 
-    # Sun.
-    d.ellipse([cx - R, horizon - R, cx + R, horizon + R], fill=SUNSET + (255,))
+    # Half-sun: the upper semicircle, flat base resting on the horizon.
+    d.pieslice([cx - R, horizon - R, cx + R, horizon + R], 180, 360, fill=fill)
 
-    # Horizon line through the sun's middle.
-    inset = int(w * 0.05)
-    half = int(w * 0.013)
-    d.rounded_rectangle([inset, horizon - half, w - inset, horizon + half],
-                        radius=half, fill=SUNSET + (255,))
+    # Broken horizon line: a base bar beneath the sun, plus a segment to each
+    # side, with small gaps — echoing the source.
+    t = int(w * 0.05)
+    half = t // 2
+    gap = int(w * 0.045)
+    inset = int(w * 0.045)
+    base_x0, base_x1 = cx - int(R * 1.12), cx + int(R * 1.12)
+    segments = [
+        (base_x0, base_x1),                       # under the sun
+        (inset, base_x0 - gap),                   # left of the sun
+        (base_x1 + gap, w - inset),               # right of the sun
+    ]
+    for x0, x1 in segments:
+        if x1 - x0 > t:                            # skip degenerate slivers
+            d.rounded_rectangle([x0, horizon - half, x1, horizon + half],
+                                radius=half, fill=fill)
 
     # Round the tile corners.
     mask = Image.new("L", (w, h), 0)

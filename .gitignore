@@ -1,14 +1,17 @@
 # PyInstaller build artifacts
 build/
 dist/
-*.spec
 assets/Rituals.iconset/
+# Note: Rituals.spec is hand-edited (it bundles the supabase deps) and IS tracked.
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Secrets
+.env
 
 # macOS
 .DS_Store
