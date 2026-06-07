@@ -1,0 +1,7 @@
+# Server-only dependencies for the hosted web app.
+# Excludes pywebview (desktop-only; needs a GUI toolkit and won't install
+# on a headless host). The desktop .app still uses requirements.txt.
+fastapi>=0.110.0
+uvicorn>=0.27.0
+supabase>=2.4.0
+python-dotenv>=1.0.0

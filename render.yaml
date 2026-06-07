@@ -1,0 +1,17 @@
+# Render blueprint for the hosted Rituals web app.
+# In the Render dashboard: New > Blueprint, point it at this repo, then fill in
+# the two Supabase secrets when prompted (they are not stored in git).
+services:
+  - type: web
+    name: rituals
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
