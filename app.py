@@ -65,6 +65,36 @@ def _decorate_win(win: dict) -> dict:
     return out
 
 
+def _quarter_start(d: date) -> date:
+    """First day of the calendar quarter containing d (Q1=Jan, Q2=Apr, …)."""
+    q = (d.month - 1) // 3  # 0..3
+    return date(d.year, q * 3 + 1, 1)
+
+
+def _quarter_id(quarter_start: date) -> str:
+    """Stable id like '2026-Q2' used to prevent duplicate quarters."""
+    return f"{quarter_start.year}-Q{(quarter_start.month - 1) // 3 + 1}"
+
+
+def _quarter_label(quarter_start: date) -> str:
+    q = (quarter_start.month - 1) // 3 + 1
+    end_month = quarter_start.month + 2
+    months = (
+        f"{quarter_start.strftime('%b')}–{date(quarter_start.year, end_month, 1).strftime('%b')}"
+    )
+    return f"Q{q} {quarter_start.year} · {months}"
+
+
+def _decorate_quarter(quarter: dict) -> dict:
+    """Add derived display fields without mutating stored data."""
+    start = date.fromisoformat(quarter["quarter_start"])
+    out = dict(quarter)
+    out["label"] = _quarter_label(start)
+    out["done_count"] = sum(1 for t in quarter["targets"] if t.get("done"))
+    out["total"] = len(quarter["targets"])
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Models
 # --------------------------------------------------------------------------- #
@@ -78,6 +108,19 @@ class CreateWeek(BaseModel):
         cleaned = [p.strip() for p in v if p and p.strip()]
         if len(cleaned) != 3:
             raise ValueError("Provide exactly 3 non-empty priorities.")
+        return cleaned
+
+
+class CreateQuarter(BaseModel):
+    quarter_start: str  # ISO date; any day in the target quarter is fine
+    targets: List[str]
+
+    @field_validator("targets")
+    @classmethod
+    def _exactly_three(cls, v: List[str]) -> List[str]:
+        cleaned = [t.strip() for t in v if t and t.strip()]
+        if len(cleaned) != 3:
+            raise ValueError("Provide exactly 3 non-empty targets.")
         return cleaned
 
 
@@ -215,4 +258,74 @@ async def edit_win(wid: str, body: TextUpdate):
 async def delete_win(wid: str):
     if not store.delete_win(wid):
         raise HTTPException(404, "Win not found.")
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Quarterly targets — three goals per calendar quarter
+# --------------------------------------------------------------------------- #
+@app.get("/api/quarters")
+async def list_quarters():
+    quarters = sorted(
+        store.get_quarters(), key=lambda q: q["quarter_start"], reverse=True
+    )
+    return {"quarters": [_decorate_quarter(q) for q in quarters]}
+
+
+@app.post("/api/quarters")
+async def create_quarter(req: CreateQuarter):
+    try:
+        start = _quarter_start(date.fromisoformat(req.quarter_start))
+    except ValueError:
+        raise HTTPException(400, "Invalid quarter_start date.")
+
+    qid = _quarter_id(start)
+    if store.get_quarter(qid) is not None:
+        raise HTTPException(409, "Targets for this quarter already exist.")
+
+    quarter = {
+        "id": qid,
+        "quarter_start": start.isoformat(),
+        "created_at": _now_iso(),
+        "targets": [
+            {"text": t, "done": False, "done_at": None} for t in req.targets
+        ],
+    }
+    return _decorate_quarter(store.insert_quarter(quarter))
+
+
+def _require_quarter(qid: str) -> dict:
+    quarter = store.get_quarter(qid)
+    if quarter is None:
+        raise HTTPException(404, "Quarter not found.")
+    return quarter
+
+
+@app.post("/api/quarters/{qid}/targets/{idx}/toggle")
+async def toggle_target(qid: str, idx: int):
+    quarter = _require_quarter(qid)
+    if not 0 <= idx < len(quarter["targets"]):
+        raise HTTPException(404, "Target not found.")
+    t = quarter["targets"][idx]
+    t["done"] = not t["done"]
+    t["done_at"] = _now_iso() if t["done"] else None
+    return _decorate_quarter(store.update_quarter_targets(qid, quarter["targets"]))
+
+
+@app.patch("/api/quarters/{qid}/targets/{idx}")
+async def edit_target(qid: str, idx: int, body: TextUpdate):
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "Target text cannot be empty.")
+    quarter = _require_quarter(qid)
+    if not 0 <= idx < len(quarter["targets"]):
+        raise HTTPException(404, "Target not found.")
+    quarter["targets"][idx]["text"] = text
+    return _decorate_quarter(store.update_quarter_targets(qid, quarter["targets"]))
+
+
+@app.delete("/api/quarters/{qid}")
+async def delete_quarter(qid: str):
+    if not store.delete_quarter(qid):
+        raise HTTPException(404, "Quarter not found.")
     return {"ok": True}

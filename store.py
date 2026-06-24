@@ -124,3 +124,42 @@ def update_win_text(wid: str, text: str) -> dict:
 def delete_win(wid: str) -> bool:
     res = _run(lambda: _client().table("wins").delete().eq("id", wid).execute())
     return bool(res.data)
+
+
+# --------------------------------------------------------------------------- #
+# Quarters
+# --------------------------------------------------------------------------- #
+def get_quarters() -> list[dict]:
+    res = _run(lambda: _client().table("quarters").select("*").execute())
+    return res.data or []
+
+
+def get_quarter(qid: str) -> dict | None:
+    res = _run(
+        lambda: _client().table("quarters").select("*").eq("id", qid).limit(1).execute()
+    )
+    rows = res.data or []
+    return rows[0] if rows else None
+
+
+def insert_quarter(quarter: dict) -> dict:
+    res = _run(lambda: _client().table("quarters").insert(quarter).execute())
+    return res.data[0]
+
+
+def update_quarter_targets(qid: str, targets: list[dict]) -> dict:
+    res = _run(
+        lambda: _client()
+        .table("quarters")
+        .update({"targets": targets})
+        .eq("id", qid)
+        .execute()
+    )
+    return res.data[0]
+
+
+def delete_quarter(qid: str) -> bool:
+    res = _run(
+        lambda: _client().table("quarters").delete().eq("id", qid).execute()
+    )
+    return bool(res.data)

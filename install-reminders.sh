@@ -26,6 +26,10 @@ cat > "$PLIST" <<PLISTEOF
   <array>
     <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Month</key><integer>1</integer><key>Day</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Month</key><integer>4</integer><key>Day</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Month</key><integer>7</integer><key>Day</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Month</key><integer>10</integer><key>Day</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>StandardErrorPath</key>
   <string>/tmp/rituals-reminder.err</string>
@@ -39,6 +43,7 @@ PLISTEOF
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 
-echo "Installed: reminders fire Sunday & Friday at 9:00am (when the week's ritual isn't done yet)."
+echo "Installed: reminders fire Sunday & Friday at 9:00am, plus the 1st of each"
+echo "quarter (Jan/Apr/Jul/Oct), when that period's ritual isn't done yet."
 echo "  Test now:  python3 \"$NOTIFY\""
 echo "  Remove:    ./uninstall-reminders.sh"

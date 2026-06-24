@@ -15,8 +15,16 @@ create table if not exists wins (
     text        text        not null
 );
 
+create table if not exists quarters (
+    id            text primary key,            -- stable quarter id, e.g. '2026-Q2'
+    quarter_start date        not null,         -- first day of the quarter
+    created_at    timestamptz not null default now(),
+    targets       jsonb       not null default '[]'::jsonb
+);
+
 -- The desktop app connects with the service_role key, which bypasses RLS.
 -- Enabling RLS with no policies means the public anon key can do nothing,
 -- so the data is locked down even if that key ever leaks.
-alter table weeks enable row level security;
-alter table wins  enable row level security;
+alter table weeks    enable row level security;
+alter table wins     enable row level security;
+alter table quarters enable row level security;

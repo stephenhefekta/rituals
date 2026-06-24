@@ -102,9 +102,12 @@ python3 main.py
 
 ## Optional: Sunday & Friday reminders
 
-A `launchd` agent can nudge you on Sunday and Friday mornings (only if that week's ritual isn't done yet). Notifications are delivered via [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`).
+A `launchd` agent can nudge you on Sunday and Friday mornings (only if that week's ritual isn't done yet). Notifications are delivered by a small signed agent, **Rituals Notifier.app**, which posts via the modern `UserNotifications` framework — so the banner is branded "Rituals", renders its text on current macOS, and opens the app when clicked. (terminal-notifier 2.0.0 was dropped: its deprecated `NSUserNotification` path delivers empty, textless banners on macOS 11+.)
 
 ```bash
-./install-reminders.sh    # schedule them
-./uninstall-reminders.sh  # remove them
+./notifier/build-notifier.sh   # build + sign + install the notifier (once)
+./install-reminders.sh         # schedule the reminders
+./uninstall-reminders.sh       # remove them
 ```
+
+The first reminder asks once to allow notifications for "Rituals" — click **Allow**.

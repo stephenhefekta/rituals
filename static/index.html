@@ -15,6 +15,7 @@
     .card { background:#fff; border:1px solid #e7e9f0; border-radius:16px; }
     .accent { background: linear-gradient(135deg,#eef2ff,#f5f3ff); border:1px solid #c7d2fe; }
     .accent-win { background: linear-gradient(135deg,#fffbeb,#fef3c7); border:1px solid #fde68a; }
+    .accent-quarter { background: linear-gradient(135deg,#faf5ff,#f3e8ff); border:1px solid #e9d5ff; }
 
     input:focus, textarea:focus { outline:none; box-shadow:0 0 0 3px rgba(99,102,241,.18); border-color:#a5b4fc; }
     button:disabled { opacity:.5; cursor:not-allowed; }
@@ -48,11 +49,14 @@
         </div>
         <h1 class="text-2xl font-extrabold tracking-tight">Rituals</h1>
       </div>
-      <p class="text-slate-500 text-sm mt-1.5">Set your top three every Sunday, capture a win every Friday — and keep the whole history.</p>
+      <p class="text-slate-500 text-sm mt-1.5">Set 3 targets each quarter, your top three every Sunday, and capture a win every Friday — and keep the whole history.</p>
     </header>
 
     <!-- Load / cold-start status (hidden once data arrives) -->
     <div id="status" class="hidden text-center text-sm text-slate-500 card py-5 mb-6"></div>
+
+    <!-- This quarter's targets / entry form -->
+    <section id="quarter-current" class="mb-6"></section>
 
     <!-- This week's priorities / entry form -->
     <section id="current" class="mb-6"></section>
@@ -70,12 +74,21 @@
     </section>
 
     <!-- Wins archive -->
-    <section id="win-archive">
+    <section id="win-archive" class="mb-8">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Wins archive</h2>
         <span id="win-archive-stats" class="text-xs text-slate-400"></span>
       </div>
       <div id="win-archive-list" class="space-y-3"></div>
+    </section>
+
+    <!-- Quarter archive -->
+    <section id="quarter-archive">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">Quarter archive</h2>
+        <span id="quarter-archive-stats" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="quarter-archive-list" class="space-y-3"></div>
     </section>
   </div>
 
@@ -83,7 +96,8 @@
 const API = '';
 let WEEKS = [];
 let WINS = [];
-let editingWeek = false, editingWin = false;
+let QUARTERS = [];
+let editingWeek = false, editingWin = false, editingQuarter = false;
 
 // ---------- date helpers ----------
 function mondayOf(d) {
@@ -115,6 +129,27 @@ function targetWeekStart() {
 // A win is reflective, so it always belongs to the current (in-progress) week.
 function winWeekStart() {
   return mondayOf(new Date());
+}
+
+// ---------- quarter helpers ----------
+function quarterStartDate(d) {
+  const q = Math.floor(d.getMonth() / 3);     // 0..3
+  return new Date(d.getFullYear(), q * 3, 1);
+}
+function quarterId(d) {
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`;
+}
+function quarterLabelJs(qs) {
+  const q = Math.floor(qs.getMonth() / 3) + 1;
+  const endM = new Date(qs.getFullYear(), qs.getMonth() + 2, 1);
+  const months = `${qs.toLocaleDateString(undefined,{month:'short'})}–${endM.toLocaleDateString(undefined,{month:'short'})}`;
+  return `Q${q} ${qs.getFullYear()} · ${months}`;
+}
+// Targets belong to the quarter we're currently in.
+function targetQuarterStart() { return quarterStartDate(new Date()); }
+function isQuarterStartToday() {
+  const d = new Date();
+  return d.getDate() === 1 && [0,3,6,9].includes(d.getMonth());
 }
 
 function toIsoDate(d) {
@@ -152,6 +187,11 @@ async function load() {
     ]);
     WEEKS = w.weeks;
     WINS = win.wins;
+    // Quarters may not be migrated in Supabase yet — degrade gracefully (server
+    // is already awake here, so a single try fails fast) rather than breaking
+    // the whole page if the table is missing.
+    try { QUARTERS = (await fetchJson('/api/quarters', 1)).quarters; }
+    catch (_) { QUARTERS = []; }
     hideStatus();
     render();
   } catch (e) {
@@ -467,7 +507,192 @@ function winRow(w) {
   </details>`;
 }
 
-function render() { renderCurrent(); renderWinCurrent(); renderArchive(); renderWinArchive(); }
+// ---------- quarterly targets ----------
+function targetRow(q, t, idx) {
+  const done = t.done;
+  return `<div class="flex items-start gap-3 py-2.5 fade-up">
+    <div class="check ${done?'done':''}" onclick="toggleTarget('${q.id}',${idx})">${checkSvg()}</div>
+    <div class="flex-1 min-w-0">
+      <div class="text-[15px] leading-snug ${done?'line-through text-slate-400':'text-slate-800'}">${escapeHtml(t.text)}</div>
+      ${done && t.done_at ? `<div class="text-[11px] text-emerald-600 mt-0.5">Done ${new Date(t.done_at).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</div>` : ''}
+    </div>
+    <div class="text-slate-300 font-bold text-sm pt-0.5">${idx+1}</div>
+  </div>`;
+}
+
+function renderQuarterCurrent() {
+  const el = document.getElementById('quarter-current');
+  const qid = quarterId(targetQuarterStart());
+  const existing = QUARTERS.find(q => q.id === qid);
+  el.innerHTML = existing ? quarterCard(existing) : quarterEntryForm();
+}
+
+function quarterCard(q) {
+  if (editingQuarter) return quarterCardEditing(q);
+  const rows = q.targets.map((t,i)=>targetRow(q,t,i)).join('');
+  const complete = q.done_count === q.total;
+  return `<div class="accent-quarter rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-1">
+      <div>
+        <div class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-violet-100 text-violet-700'}">THIS QUARTER</div>
+        <h2 class="text-lg font-bold mt-1.5">${q.label}</h2>
+      </div>
+      <div class="flex items-center gap-2 text-slate-500">
+        ${progressRing(q.done_count, q.total)}
+        <span class="text-sm font-semibold">${q.done_count}/${q.total}</span>
+      </div>
+    </div>
+    <div class="divide-y divide-violet-100/70 mt-2">${rows}</div>
+    ${complete?`<div class="text-center text-emerald-600 text-sm font-semibold mt-3">🎉 All three quarterly targets hit.</div>`:''}
+    <div class="flex justify-end mt-3">
+      <button onclick="startQuarterEdit()" class="text-xs font-semibold text-violet-500 hover:text-violet-700 transition">Edit targets</button>
+    </div>
+  </div>`;
+}
+
+function quarterCardEditing(q) {
+  return `<div class="accent-quarter rounded-2xl p-5 fade-up">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <div class="pill bg-violet-100 text-violet-700">EDIT TARGETS</div>
+        <h2 class="text-lg font-bold mt-1.5">${q.label}</h2>
+      </div>
+    </div>
+    <div class="space-y-2.5">
+      ${q.targets.map((t,i)=>`<div class="flex items-center gap-3">
+        <span class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+        <input id="qe${i}" type="text" value="${escapeHtml(t.text)}" maxlength="200"
+          class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-white"
+          onkeydown="if(event.key==='Enter'){const n=document.getElementById('qe'+${i+1});n?n.focus():saveQuarterEdits('${q.id}');}if(event.key==='Escape')cancelQuarterEdit();"/>
+      </div>`).join('')}
+    </div>
+    <div id="q-edit-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="saveQuarterEdits('${q.id}')" class="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2.5 rounded-xl transition">Save</button>
+      <button onclick="cancelQuarterEdit()" class="px-5 bg-white border border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl hover:bg-slate-50 transition">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function quarterEntryForm() {
+  const label = quarterLabelJs(targetQuarterStart());
+  return `<div class="card p-5 fade-up">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-lg">Set this quarter's 3 targets</h2>
+      <div class="flex items-center gap-2">
+        ${isQuarterStartToday() ? `<span class="pill bg-violet-100 text-violet-700">🔔 Due today</span>` : ''}
+        <span class="text-xs text-slate-400">${label}</span>
+      </div>
+    </div>
+    <div class="space-y-2.5">
+      ${[0,1,2].map(i=>`<div class="flex items-center gap-3">
+        <span class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
+        <input id="qt${i}" type="text" placeholder="Target ${i+1}…" maxlength="200"
+          class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60"
+          onkeydown="if(event.key==='Enter'){const n=document.getElementById('qt'+${i+1});n?n.focus():submitQuarter();}"/>
+      </div>`).join('')}
+    </div>
+    <div id="q-form-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <button onclick="submitQuarter()" class="mt-4 w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2.5 rounded-xl transition">
+      Lock in targets
+    </button>
+  </div>`;
+}
+
+function quarterArchiveCard(q) {
+  const complete = q.done_count === q.total;
+  const rows = q.targets.map((t,i)=>targetRow(q,t,i)).join('');
+  return `<details class="card overflow-hidden group">
+    <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-slate-100 text-slate-500'}">${q.done_count}/${q.total}</span>
+        <span class="font-semibold text-[15px] truncate">${q.label}</span>
+      </div>
+      <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </summary>
+    <div class="px-4 pb-3 pt-1 border-t border-slate-100 divide-y divide-slate-100">${rows}</div>
+    <div class="px-4 pb-3 flex justify-end">
+      <button onclick="delQuarter('${q.id}')" class="text-xs text-slate-400 hover:text-rose-500 transition">Delete quarter</button>
+    </div>
+  </details>`;
+}
+
+function renderQuarterArchive() {
+  const qid = quarterId(targetQuarterStart());
+  const past = QUARTERS.filter(q => q.id !== qid);
+  const list = document.getElementById('quarter-archive-list');
+  const stats = document.getElementById('quarter-archive-stats');
+
+  if (!past.length) {
+    list.innerHTML = `<div class="text-slate-400 text-sm py-6 text-center card">No archived quarters yet. Quarter by quarter, they'll stack up here.</div>`;
+    stats.textContent = '';
+    return;
+  }
+
+  const totalDone = past.reduce((s,q)=>s+q.done_count,0);
+  const totalAll = past.reduce((s,q)=>s+q.total,0);
+  stats.textContent = `${past.length} quarter${past.length>1?'s':''} · ${totalDone}/${totalAll} completed`;
+  list.innerHTML = past.map(quarterArchiveCard).join('');
+}
+
+async function submitQuarter() {
+  const err = document.getElementById('q-form-err');
+  const vals = [0,1,2].map(i=>document.getElementById('qt'+i).value.trim());
+  if (vals.some(v=>!v)) {
+    err.textContent = 'Please fill in all three targets.';
+    err.classList.remove('hidden');
+    return;
+  }
+  err.classList.add('hidden');
+  const quarter_start = toIsoDate(targetQuarterStart());
+  try {
+    await api('POST','/api/quarters',{quarter_start, targets: vals});
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function toggleTarget(qid, idx) {
+  const q = QUARTERS.find(x=>x.id===qid);
+  if (q) { const t=q.targets[idx]; t.done=!t.done; t.done_at=t.done?new Date().toISOString():null;
+    q.done_count = q.targets.filter(x=>x.done).length; render(); }
+  try { await api('POST',`/api/quarters/${qid}/targets/${idx}/toggle`); await load(); }
+  catch(e){ load(); }
+}
+
+function startQuarterEdit() { editingQuarter = true; renderQuarterCurrent(); document.getElementById('qe0')?.focus(); }
+function cancelQuarterEdit() { editingQuarter = false; renderQuarterCurrent(); }
+
+async function saveQuarterEdits(qid) {
+  const q = QUARTERS.find(x=>x.id===qid);
+  const err = document.getElementById('q-edit-err');
+  const vals = [0,1,2].map(i=>document.getElementById('qe'+i).value.trim());
+  if (vals.some(v=>!v)) {
+    err.textContent = 'Targets can’t be empty.';
+    err.classList.remove('hidden');
+    return;
+  }
+  try {
+    for (let i=0;i<3;i++) {
+      if (vals[i] !== q.targets[i].text) await api('PATCH',`/api/quarters/${qid}/targets/${i}`,{text:vals[i]});
+    }
+    editingQuarter = false;
+    await load();
+  } catch(e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function delQuarter(qid) {
+  if (!confirm('Delete this quarter from the archive? This cannot be undone.')) return;
+  try { await api('DELETE',`/api/quarters/${qid}`); await load(); }
+  catch(e){ alert(e.message); }
+}
+
+function render() { renderQuarterCurrent(); renderCurrent(); renderWinCurrent(); renderArchive(); renderWinArchive(); renderQuarterArchive(); }
 
 // ---------- actions ----------
 async function submitWeek() {
