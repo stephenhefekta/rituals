@@ -18,3 +18,6 @@ venv/
 
 # Built notifier bundle (rebuilt via notifier/build-notifier.sh)
 notifier/Rituals Notifier.app/
+
+# Wrangler local cache/state
+.wrangler/
