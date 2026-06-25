@@ -58,6 +58,9 @@
     <!-- This quarter's targets / entry form -->
     <section id="quarter-current" class="mb-6"></section>
 
+    <!-- Next quarter — only in the last month of the current quarter -->
+    <section id="quarter-upcoming" class="mb-6"></section>
+
     <!-- This week's priorities / entry form -->
     <section id="current" class="mb-6"></section>
 
@@ -97,7 +100,7 @@ const API = '';
 let WEEKS = [];
 let WINS = [];
 let QUARTERS = [];
-let editingWeek = false, editingWin = false, editingQuarter = false;
+let editingWeek = false, editingWin = false, editingQuarterId = null;
 
 // ---------- date helpers ----------
 function mondayOf(d) {
@@ -145,8 +148,14 @@ function quarterLabelJs(qs) {
   const months = `${qs.toLocaleDateString(undefined,{month:'short'})}–${endM.toLocaleDateString(undefined,{month:'short'})}`;
   return `Q${q} ${qs.getFullYear()} · ${months}`;
 }
-// Targets belong to the quarter we're currently in.
-function targetQuarterStart() { return quarterStartDate(new Date()); }
+function currentQuarterStart() { return quarterStartDate(new Date()); }
+function nextQuarterStart() {
+  const qs = currentQuarterStart();
+  return new Date(qs.getFullYear(), qs.getMonth() + 3, 1);
+}
+// You can plan the next quarter during the last month of the current one
+// (March / June / September / December).
+function inQuarterPlanningWindow() { return (new Date().getMonth() + 1) % 3 === 0; }
 function isQuarterStartToday() {
   const d = new Date();
   return d.getDate() === 1 && [0,3,6,9].includes(d.getMonth());
@@ -522,30 +531,41 @@ function targetRow(q, t, idx) {
 
 function renderQuarterCurrent() {
   const el = document.getElementById('quarter-current');
-  const qid = quarterId(targetQuarterStart());
-  const existing = QUARTERS.find(q => q.id === qid);
-  el.innerHTML = existing ? quarterCard(existing) : quarterEntryForm();
+  const qs = currentQuarterStart();
+  const existing = QUARTERS.find(q => q.id === quarterId(qs));
+  el.innerHTML = existing ? quarterCard(existing, false) : quarterEntryForm(qs, 'current');
 }
 
-function quarterCard(q) {
-  if (editingQuarter) return quarterCardEditing(q);
+// The next quarter can be planned a month ahead — only shown in that window.
+function renderQuarterUpcoming() {
+  const el = document.getElementById('quarter-upcoming');
+  if (!inQuarterPlanningWindow()) { el.innerHTML = ''; return; }
+  const qs = nextQuarterStart();
+  const existing = QUARTERS.find(q => q.id === quarterId(qs));
+  el.innerHTML = existing ? quarterCard(existing, true) : quarterEntryForm(qs, 'next');
+}
+
+function quarterCard(q, upcoming) {
+  if (editingQuarterId === q.id) return quarterCardEditing(q);
   const rows = q.targets.map((t,i)=>targetRow(q,t,i)).join('');
   const complete = q.done_count === q.total;
+  const pill = upcoming
+    ? `<div class="pill bg-violet-100 text-violet-700">UP NEXT</div>`
+    : `<div class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-violet-100 text-violet-700'}">THIS QUARTER</div>`;
+  const right = upcoming ? '' :
+    `<div class="flex items-center gap-2 text-slate-500">${progressRing(q.done_count, q.total)}<span class="text-sm font-semibold">${q.done_count}/${q.total}</span></div>`;
   return `<div class="accent-quarter rounded-2xl p-5 fade-up">
     <div class="flex items-center justify-between mb-1">
       <div>
-        <div class="pill ${complete?'bg-emerald-100 text-emerald-700':'bg-violet-100 text-violet-700'}">THIS QUARTER</div>
+        ${pill}
         <h2 class="text-lg font-bold mt-1.5">${q.label}</h2>
       </div>
-      <div class="flex items-center gap-2 text-slate-500">
-        ${progressRing(q.done_count, q.total)}
-        <span class="text-sm font-semibold">${q.done_count}/${q.total}</span>
-      </div>
+      ${right}
     </div>
     <div class="divide-y divide-violet-100/70 mt-2">${rows}</div>
-    ${complete?`<div class="text-center text-emerald-600 text-sm font-semibold mt-3">🎉 All three quarterly targets hit.</div>`:''}
+    ${(!upcoming && complete)?`<div class="text-center text-emerald-600 text-sm font-semibold mt-3">🎉 All three quarterly targets hit.</div>`:''}
     <div class="flex justify-end mt-3">
-      <button onclick="startQuarterEdit()" class="text-xs font-semibold text-violet-500 hover:text-violet-700 transition">Edit targets</button>
+      <button onclick="startQuarterEdit('${q.id}')" class="text-xs font-semibold text-violet-500 hover:text-violet-700 transition">Edit targets</button>
     </div>
   </div>`;
 }
@@ -574,26 +594,31 @@ function quarterCardEditing(q) {
   </div>`;
 }
 
-function quarterEntryForm() {
-  const label = quarterLabelJs(targetQuarterStart());
+function quarterEntryForm(qs, kind) {
+  const label = quarterLabelJs(qs);
+  const heading = kind === 'next' ? "Plan next quarter's 3 targets" : "Set this quarter's 3 targets";
+  const pill = kind === 'next'
+    ? `<span class="pill bg-violet-100 text-violet-700">📅 Plan ahead</span>`
+    : (isQuarterStartToday() ? `<span class="pill bg-violet-100 text-violet-700">🔔 Due today</span>` : '');
+  const p = kind === 'next' ? 'next-qt' : 'cur-qt';   // distinct ids: both forms can be on screen at once
   return `<div class="card p-5 fade-up">
     <div class="flex items-center justify-between mb-3">
-      <h2 class="font-bold text-lg">Set this quarter's 3 targets</h2>
+      <h2 class="font-bold text-lg">${heading}</h2>
       <div class="flex items-center gap-2">
-        ${isQuarterStartToday() ? `<span class="pill bg-violet-100 text-violet-700">🔔 Due today</span>` : ''}
+        ${pill}
         <span class="text-xs text-slate-400">${label}</span>
       </div>
     </div>
     <div class="space-y-2.5">
       ${[0,1,2].map(i=>`<div class="flex items-center gap-3">
         <span class="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 text-sm font-bold flex items-center justify-center flex-shrink-0">${i+1}</span>
-        <input id="qt${i}" type="text" placeholder="Target ${i+1}…" maxlength="200"
+        <input id="${p}${i}" type="text" placeholder="Target ${i+1}…" maxlength="200"
           class="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60"
-          onkeydown="if(event.key==='Enter'){const n=document.getElementById('qt'+${i+1});n?n.focus():submitQuarter();}"/>
+          onkeydown="if(event.key==='Enter'){const n=document.getElementById('${p}'+${i+1});n?n.focus():submitQuarter('${kind}');}"/>
       </div>`).join('')}
     </div>
-    <div id="q-form-err" class="text-rose-500 text-sm mt-3 hidden"></div>
-    <button onclick="submitQuarter()" class="mt-4 w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2.5 rounded-xl transition">
+    <div id="${kind}-q-form-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+    <button onclick="submitQuarter('${kind}')" class="mt-4 w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2.5 rounded-xl transition">
       Lock in targets
     </button>
   </div>`;
@@ -618,8 +643,11 @@ function quarterArchiveCard(q) {
 }
 
 function renderQuarterArchive() {
-  const qid = quarterId(targetQuarterStart());
-  const past = QUARTERS.filter(q => q.id !== qid);
+  // Exclude the current quarter (shown above) and, in the planning window, the
+  // upcoming one too.
+  const exclude = new Set([quarterId(currentQuarterStart())]);
+  if (inQuarterPlanningWindow()) exclude.add(quarterId(nextQuarterStart()));
+  const past = QUARTERS.filter(q => !exclude.has(q.id));
   const list = document.getElementById('quarter-archive-list');
   const stats = document.getElementById('quarter-archive-stats');
 
@@ -635,16 +663,17 @@ function renderQuarterArchive() {
   list.innerHTML = past.map(quarterArchiveCard).join('');
 }
 
-async function submitQuarter() {
-  const err = document.getElementById('q-form-err');
-  const vals = [0,1,2].map(i=>document.getElementById('qt'+i).value.trim());
+async function submitQuarter(kind) {
+  const p = kind === 'next' ? 'next-qt' : 'cur-qt';
+  const err = document.getElementById(`${kind}-q-form-err`);
+  const vals = [0,1,2].map(i=>document.getElementById(p+i).value.trim());
   if (vals.some(v=>!v)) {
     err.textContent = 'Please fill in all three targets.';
     err.classList.remove('hidden');
     return;
   }
   err.classList.add('hidden');
-  const quarter_start = toIsoDate(targetQuarterStart());
+  const quarter_start = toIsoDate(kind === 'next' ? nextQuarterStart() : currentQuarterStart());
   try {
     await api('POST','/api/quarters',{quarter_start, targets: vals});
     await load();
@@ -662,8 +691,8 @@ async function toggleTarget(qid, idx) {
   catch(e){ load(); }
 }
 
-function startQuarterEdit() { editingQuarter = true; renderQuarterCurrent(); document.getElementById('qe0')?.focus(); }
-function cancelQuarterEdit() { editingQuarter = false; renderQuarterCurrent(); }
+function startQuarterEdit(qid) { editingQuarterId = qid; render(); document.getElementById('qe0')?.focus(); }
+function cancelQuarterEdit() { editingQuarterId = null; render(); }
 
 async function saveQuarterEdits(qid) {
   const q = QUARTERS.find(x=>x.id===qid);
@@ -678,7 +707,7 @@ async function saveQuarterEdits(qid) {
     for (let i=0;i<3;i++) {
       if (vals[i] !== q.targets[i].text) await api('PATCH',`/api/quarters/${qid}/targets/${i}`,{text:vals[i]});
     }
-    editingQuarter = false;
+    editingQuarterId = null;
     await load();
   } catch(e) {
     err.textContent = e.message;
@@ -692,7 +721,7 @@ async function delQuarter(qid) {
   catch(e){ alert(e.message); }
 }
 
-function render() { renderQuarterCurrent(); renderCurrent(); renderWinCurrent(); renderArchive(); renderWinArchive(); renderQuarterArchive(); }
+function render() { renderQuarterCurrent(); renderQuarterUpcoming(); renderCurrent(); renderWinCurrent(); renderArchive(); renderWinArchive(); renderQuarterArchive(); }
 
 // ---------- actions ----------
 async function submitWeek() {
