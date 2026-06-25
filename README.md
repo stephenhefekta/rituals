@@ -51,39 +51,28 @@ history) until you add that file. You do **not** need the project folder.
 `store.py` reads credentials from both the project-folder `.env` (dev runs) and
 `~/.rituals/.env` (the installed app).
 
-## Reach it from your phone (hosted web app)
+## Phone app (installable PWA)
 
-The desktop `.app` is just a native window around the same FastAPI server, and all
-data lives in Supabase — so a hosted copy stays in sync with the Mac app
-automatically. Deploy the server once and open the URL in mobile Safari (then
-**Share → Add to Home Screen** for an app-like icon).
+The phone version is a static **PWA**: the same UI in `static/`, served from a CDN
+and talking **directly to Supabase** behind a Supabase Auth login (Row-Level
+Security locks the data to your account). There's no server in the path, so it
+loads instantly — no cold start.
 
-Deploy files in this repo:
-
-- [`requirements-web.txt`](requirements-web.txt) — server deps (no `pywebview`, which is desktop-only and won't install on a headless host).
-- [`render.yaml`](render.yaml) — one-click [Render](https://render.com) blueprint.
-- [`Procfile`](Procfile) — generic start command for Railway / Fly / Heroku-style hosts.
-
-### Deploy on Render (free)
-
-1. Sign in at [render.com](https://render.com) and connect this GitHub repo.
-2. **New → Blueprint**, select the `rituals` repo. Render reads `render.yaml`.
-3. When prompted, paste the two secrets (Supabase Dashboard → Project Settings → API):
-   - `SUPABASE_URL` → `https://YOUR-PROJECT-ref.supabase.co`
-   - `SUPABASE_SERVICE_ROLE_KEY` → your service-role key
-4. Click **Apply**. After the build, you get a URL like `https://rituals.onrender.com`.
-5. Open that URL on your phone.
-
-> The service-role key stays server-side (in Render's env vars) and is never sent
-> to the browser. The free tier sleeps after inactivity, so the first load after a
-> while takes ~30s to wake — fine for a twice-a-week ritual.
-
-To run the web server locally the same way a host does:
+It's deployed to **Cloudflare Pages**:
 
 ```bash
-pip install -r requirements-web.txt
-uvicorn app:app --host 0.0.0.0 --port 8011   # reachable from other devices on your LAN
+# one-time: create the project
+npx wrangler pages project create focus --production-branch main
+# deploy (re-run after any change under static/)
+npx wrangler pages deploy static --project-name focus --branch main
 ```
+
+Open the resulting `*.pages.dev` URL in Chrome, sign in, then **⋮ → Install app**
+(or **Share → Add to Home Screen** on iOS) for a home-screen icon.
+
+> The Supabase **publishable** key embedded in `static/index.html` is public by
+> design — RLS is what guards the data. The `service_role` key is never shipped to
+> the client.
 
 ## Run in dev
 
