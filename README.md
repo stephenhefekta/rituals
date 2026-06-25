@@ -1,6 +1,6 @@
-# Rituals
+# Focus
 
-A small macOS app for two weekly rituals:
+A small macOS app for weekly and quarterly rituals:
 
 - **Sunday** — set your top three priorities for the week ahead, and check them off as you go.
 - **Friday** — capture one win, something that went well.
@@ -29,11 +29,11 @@ On any additional computer, just install the deps and add the same `.env` — no
 
 ## Use on a second computer (installed .app)
 
-The credentials are **not** bundled inside `Rituals.app` — it reads them from
+The credentials are **not** bundled inside `Focus.app` — it reads them from
 `~/.rituals/.env`. So copying just the app over gives you an empty screen (no
 history) until you add that file. You do **not** need the project folder.
 
-1. Copy `Rituals.app` to the other Mac (into `/Applications`).
+1. Copy `Focus.app` to the other Mac (into `/Applications`).
 2. Create the credentials file (Terminal):
    ```bash
    mkdir -p ~/.rituals && cat > ~/.rituals/.env <<'EOF'
@@ -42,7 +42,7 @@ history) until you add that file. You do **not** need the project folder.
    EOF
    chmod 600 ~/.rituals/.env
    ```
-3. Quit and relaunch Rituals — your history appears, synced from the cloud.
+3. Quit and relaunch Focus — your history appears, synced from the cloud.
 
 > An empty screen means the app can't reach Supabase: missing/typo'd
 > `~/.rituals/.env`, no internet (the app requires a connection), or a `SUPABASE_URL`
@@ -97,12 +97,12 @@ python3 main.py
 ## Build the .app
 
 ```bash
-./build.sh        # produces dist/Rituals.app
+./build.sh        # produces dist/Focus.app
 ```
 
 ## Optional: Sunday & Friday reminders
 
-A `launchd` agent can nudge you on Sunday and Friday mornings (only if that week's ritual isn't done yet). Notifications are delivered by a small signed agent, **Rituals Notifier.app**, which posts via the modern `UserNotifications` framework — so the banner is branded "Rituals", renders its text on current macOS, and opens the app when clicked. (terminal-notifier 2.0.0 was dropped: its deprecated `NSUserNotification` path delivers empty, textless banners on macOS 11+.)
+A `launchd` agent can nudge you on Sunday and Friday mornings (only if that week's ritual isn't done yet). Notifications are delivered by a small signed agent, **Focus Notifier.app**, which posts via the modern `UserNotifications` framework — so the banner is branded "Focus", renders its text on current macOS, and opens the app when clicked. (terminal-notifier 2.0.0 was dropped: its deprecated `NSUserNotification` path delivers empty, textless banners on macOS 11+.)
 
 ```bash
 ./notifier/build-notifier.sh   # build + sign + install the notifier (once)
@@ -110,4 +110,4 @@ A `launchd` agent can nudge you on Sunday and Friday mornings (only if that week
 ./uninstall-reminders.sh       # remove them
 ```
 
-The first reminder asks once to allow notifications for "Rituals" — click **Allow**.
+The first reminder asks once to allow notifications for "Focus" — click **Allow**.

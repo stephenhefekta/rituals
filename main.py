@@ -38,7 +38,7 @@ def main():
         except Exception:
             time.sleep(0.15)
 
-    webview.create_window('Rituals', url, width=900, height=820, min_size=(640, 560))
+    webview.create_window('Focus', url, width=900, height=820, min_size=(640, 560))
     webview.start()
 
 

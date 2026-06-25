@@ -1,4 +1,4 @@
-"""Supabase-backed storage for Rituals.
+"""Supabase-backed storage for Focus.
 
 All week/win persistence goes through this module so the API layer in app.py
 stays thin. Credentials come from the environment (see .env / .env.example).

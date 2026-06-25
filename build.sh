@@ -6,10 +6,10 @@ echo "Installing build deps…"
 python3 -m pip install -r requirements.txt pyinstaller --quiet
 
 echo "Building .app…"
-# Build from Rituals.spec so the supabase sub-packages (collected there) get
+# Build from Focus.spec so the supabase sub-packages (collected there) get
 # bundled — the CLI-flag build can't discover them.
-python3 -m PyInstaller Rituals.spec --noconfirm
+python3 -m PyInstaller Focus.spec --noconfirm
 
 echo ""
-echo "Done: dist/Rituals.app"
+echo "Done: dist/Focus.app"
 echo "  Drag it to /Applications to install."

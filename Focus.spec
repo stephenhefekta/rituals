@@ -38,7 +38,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Rituals',
+    name='Focus',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -58,11 +58,11 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Rituals',
+    name='Focus',
 )
 app = BUNDLE(
     coll,
-    name='Rituals.app',
+    name='Focus.app',
     icon='icon.icns',
-    bundle_identifier=None,
+    bundle_identifier='Rituals',  # keep the original id so `open -b Rituals` and notifications still resolve
 )

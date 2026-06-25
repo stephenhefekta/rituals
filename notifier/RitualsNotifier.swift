@@ -1,6 +1,6 @@
-// Rituals notifier — a tiny signed agent that posts a macOS notification via the
+// Focus notifier — a tiny signed agent that posts a macOS notification via the
 // modern UserNotifications framework (UNUserNotificationCenter), so the banner is
-// branded "Rituals" with the Rituals icon and the text renders reliably on current
+// branded "Focus" with the app icon and the text renders reliably on current
 // macOS. This replaces terminal-notifier 2.0.0, whose deprecated NSUserNotification
 // path delivers empty (textless) banners on macOS 11+.
 //
@@ -10,7 +10,7 @@
 // Usage (run the binary inside the .app bundle so Bundle.main resolves):
 //   RitualsNotifier "<title>" "<message>"   -> posts the notification
 // Launched with no payload (macOS relaunching us because the banner was clicked)
-//   -> opens the main Rituals app (bundle id "Rituals").
+//   -> opens the main Focus app (whose bundle id is still "Rituals").
 
 import Foundation
 import UserNotifications

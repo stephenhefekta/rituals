@@ -24,11 +24,11 @@ import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 
-# "Rituals Notifier.app" is our own signed agent (notifier/RitualsNotifier.swift).
+# "Focus Notifier.app" is our own signed agent (notifier/RitualsNotifier.swift).
 # It posts via the modern UserNotifications framework, so banners are branded
-# "Rituals", render their text on current macOS, and open the app when clicked —
+# "Focus", render their text on current macOS, and open the app when clicked —
 # none of which terminal-notifier 2.0.0's dead NSUserNotification path can do.
-NOTIFIER = (Path.home() / "Applications" / "Rituals Notifier.app"
+NOTIFIER = (Path.home() / "Applications" / "Focus Notifier.app"
             / "Contents" / "MacOS" / "RitualsNotifier")
 
 # .env locations, in precedence order (matches store.py: project dir first).
@@ -142,7 +142,7 @@ def main() -> None:
         nqs = _next_quarter_start(today)
         if not _exists("quarters", _quarter_id(nqs)):
             q = (nqs.month - 1) // 3 + 1
-            _notify("Rituals — Plan ahead",
+            _notify("Focus — Plan ahead",
                     f"Plan your 3 targets for Q{q} {nqs.year} — it starts next month.")
 
     # New quarter — catch-up on the first morning of the quarter (Jan/Apr/Jul/Oct
@@ -151,17 +151,17 @@ def main() -> None:
         qstart = _quarter_start(today)
         if not _exists("quarters", _quarter_id(qstart)):
             q = (qstart.month - 1) // 3 + 1
-            _notify("Rituals — New quarter",
+            _notify("Focus — New quarter",
                     f"Set your 3 targets for Q{q} {qstart.year}.")
 
     if wd == 6:  # Sunday — plan the week ahead (matches the app's Sunday shift)
         wid = _week_id(_monday_of(today + timedelta(days=1)))
         if not _exists("weeks", wid):
-            _notify("Rituals — Sunday", "Set your top 3 priorities for the week ahead.")
+            _notify("Focus — Sunday", "Set your top 3 priorities for the week ahead.")
     elif wd == 4:  # Friday — capture this week's win
         wid = _week_id(_monday_of(today))
         if not _exists("wins", wid):
-            _notify("Rituals — Friday", "Capture this week's win before you wrap up.")
+            _notify("Focus — Friday", "Capture this week's win before you wrap up.")
 
 
 if __name__ == "__main__":

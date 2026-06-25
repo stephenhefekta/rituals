@@ -1,12 +1,16 @@
 #!/bin/bash
-# Build, sign, and install "Rituals Notifier.app" — the signed agent that posts
+# Build, sign, and install "Focus Notifier.app" — the signed agent that posts
 # the reminder banners (see RitualsNotifier.swift for why this exists).
 #
-# Output: ~/Applications/Rituals Notifier.app, which notify.py invokes.
+# Output: ~/Applications/Focus Notifier.app, which notify.py invokes.
+# The bundle id stays com.rituals.notifier so the existing notification
+# permission carries over (the banner just relabels to "Focus").
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="Rituals Notifier.app"
+APP="Focus Notifier.app"
+# Remove any pre-rename install so it doesn't linger alongside the new one.
+rm -rf "$HOME/Applications/Rituals Notifier.app"
 ID="Developer ID Application: Stephen Hodges (5R9J54S3RW)"
 ICON="../icon.icns"
 
@@ -23,8 +27,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Rituals</string>
-  <key>CFBundleDisplayName</key><string>Rituals</string>
+  <key>CFBundleName</key><string>Focus</string>
+  <key>CFBundleDisplayName</key><string>Focus</string>
   <key>CFBundleIdentifier</key><string>com.rituals.notifier</string>
   <key>CFBundleExecutable</key><string>RitualsNotifier</string>
   <key>CFBundleIconFile</key><string>applet</string>
@@ -54,4 +58,4 @@ rm -rf "$APP"
 
 echo ""
 echo "Done: ~/Applications/$APP"
-echo "  First reminder will ask once to allow notifications for \"Rituals\" — click Allow."
+echo "  If prompted, allow notifications for \"Focus\" — click Allow."
