@@ -97,6 +97,11 @@ def _quarter_id(quarter_start: date) -> str:
     return f"{quarter_start.year}-Q{(quarter_start.month - 1) // 3 + 1}"
 
 
+def _next_quarter_start(d: date) -> date:
+    qs = _quarter_start(d)
+    return date(qs.year + 1, 1, 1) if qs.month == 10 else date(qs.year, qs.month + 3, 1)
+
+
 # --------------------------------------------------------------------------- #
 # Notification
 # --------------------------------------------------------------------------- #
@@ -120,16 +125,28 @@ def main() -> None:
     today = date.today()
     wd = today.weekday()  # Mon=0 .. Sun=6
 
-    # Test hooks: `notify.py sun|fri|qtr` force that branch on any day, still
-    # honouring the "already done?" check. No arg = real calendar behaviour.
+    # Test hooks: `notify.py sun|fri|qtr|plan` force that branch on any day,
+    # still honouring the "already done?" check. No arg = real calendar behaviour.
     arg = sys.argv[1].lower() if len(sys.argv) > 1 else ""
     if arg.startswith("sun"):
         wd = 6
     elif arg.startswith("fri"):
         wd = 4
+    force_plan = arg.startswith("plan")
     force_quarter = arg.startswith("q")
 
-    # Quarterly — first morning of a calendar quarter (Jan/Apr/Jul/Oct 1).
+    # Plan ahead — first morning of the month before a quarter (Mar/Jun/Sep/Dec
+    # 1), matching the app's early-planning window. Nudges only if next quarter's
+    # targets aren't set yet.
+    if force_plan or (today.day == 1 and today.month in (3, 6, 9, 12)):
+        nqs = _next_quarter_start(today)
+        if not _exists("quarters", _quarter_id(nqs)):
+            q = (nqs.month - 1) // 3 + 1
+            _notify("Rituals — Plan ahead",
+                    f"Plan your 3 targets for Q{q} {nqs.year} — it starts next month.")
+
+    # New quarter — catch-up on the first morning of the quarter (Jan/Apr/Jul/Oct
+    # 1) if the targets still aren't set.
     if force_quarter or (today.day == 1 and today.month in (1, 4, 7, 10)):
         qstart = _quarter_start(today)
         if not _exists("quarters", _quarter_id(qstart)):
