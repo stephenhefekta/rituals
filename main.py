@@ -15,10 +15,20 @@ import webview
 from app import app as fastapi_app
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(('127.0.0.1', 0))
-        return s.getsockname()[1]
+def _pick_port(preferred: int = 8011) -> int:
+    # A stable port keeps the web origin constant, so the Supabase login session
+    # (stored in localStorage, keyed by origin) survives across launches. Fall
+    # back to a random free port only if the preferred one is already in use.
+    s = socket.socket()
+    try:
+        s.bind(('127.0.0.1', preferred))
+        return preferred
+    except OSError:
+        with socket.socket() as f:
+            f.bind(('127.0.0.1', 0))
+            return f.getsockname()[1]
+    finally:
+        s.close()
 
 
 def _run_server(port: int):
@@ -26,7 +36,7 @@ def _run_server(port: int):
 
 
 def main():
-    port = _free_port()
+    port = _pick_port()
     threading.Thread(target=_run_server, args=(port,), daemon=True).start()
 
     # Wait up to ~4 s for server to accept connections

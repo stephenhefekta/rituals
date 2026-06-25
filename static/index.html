@@ -4,7 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Focus</title>
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#7c3aed" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Focus" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     body { font-family: 'Inter', sans-serif; background: #f6f7fb; }
@@ -37,11 +48,11 @@
   </style>
 </head>
 <body class="text-slate-800">
-  <div class="max-w-2xl mx-auto px-5 py-8">
 
-    <!-- Header -->
-    <header class="mb-7">
-      <div class="flex items-center gap-3">
+  <!-- Login — shown until a session exists -->
+  <div id="login" class="hidden min-h-screen flex items-center justify-center px-5">
+    <div class="card p-7 w-full max-w-sm fade-up">
+      <div class="flex items-center gap-3 mb-1">
         <div class="flex gap-1.5">
           <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
           <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
@@ -49,7 +60,39 @@
         </div>
         <h1 class="text-2xl font-extrabold tracking-tight">Focus</h1>
       </div>
-      <p class="text-slate-500 text-sm mt-1.5">Set 3 targets each quarter, your top three every Sunday, and capture a win every Friday — and keep the whole history.</p>
+      <p class="text-slate-500 text-sm mb-5">Sign in to your account.</p>
+      <div class="space-y-2.5">
+        <input id="login-email" type="email" autocomplete="username" placeholder="Email"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60"
+          onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus();" />
+        <input id="login-pass" type="password" autocomplete="current-password" placeholder="Password"
+          class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-[15px] bg-slate-50/60"
+          onkeydown="if(event.key==='Enter')signIn();" />
+      </div>
+      <div id="login-err" class="text-rose-500 text-sm mt-3 hidden"></div>
+      <button id="login-btn" onclick="signIn()" class="mt-4 w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2.5 rounded-xl transition">Sign in</button>
+    </div>
+  </div>
+
+  <!-- App — shown once authenticated -->
+  <div id="app" class="hidden max-w-2xl mx-auto px-5 py-8">
+
+    <!-- Header -->
+    <header class="mb-7">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-3">
+            <div class="flex gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-violet-500"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            </div>
+            <h1 class="text-2xl font-extrabold tracking-tight">Focus</h1>
+          </div>
+          <p class="text-slate-500 text-sm mt-1.5">Set 3 targets each quarter, your top three every Sunday, and capture a win every Friday — and keep the whole history.</p>
+        </div>
+        <button onclick="signOut()" class="text-xs font-semibold text-slate-400 hover:text-slate-600 transition shrink-0 mt-1">Sign out</button>
+      </div>
     </header>
 
     <!-- Load / cold-start status (hidden once data arrives) -->
@@ -96,7 +139,13 @@
   </div>
 
 <script>
-const API = '';
+// ---------- Supabase ----------
+// The publishable key is meant to ship in client apps; Row-Level Security (the
+// "owner only" policies) is what actually guards the data.
+const SUPABASE_URL = 'https://zpmdfgqctepsortikvcn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jxQhQ527SBOGpkVPHm_VnA_X5OIKyhI';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 let WEEKS = [];
 let WINS = [];
 let QUARTERS = [];
@@ -164,6 +213,25 @@ function isQuarterStartToday() {
 function toIsoDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+function weekLabelJs(weekStartIso) {
+  const s = new Date(weekStartIso + 'T00:00:00');
+  const e = new Date(s.getTime() + 6*86400000);
+  const sM = s.toLocaleDateString(undefined,{month:'short'});
+  if (s.getMonth() === e.getMonth()) return `${sM} ${s.getDate()}–${e.getDate()}, ${e.getFullYear()}`;
+  const eM = e.toLocaleDateString(undefined,{month:'short'});
+  return `${sM} ${s.getDate()} – ${eM} ${e.getDate()}, ${e.getFullYear()}`;
+}
+
+// ---------- decorate (derived display fields, formerly added server-side) ----------
+function decorateWeek(w) {
+  return { ...w, label: weekLabelJs(w.week_start),
+    done_count: w.priorities.filter(p=>p.done).length, total: w.priorities.length };
+}
+function decorateWin(w) { return { ...w, label: weekLabelJs(w.week_start) }; }
+function decorateQuarter(q) {
+  return { ...q, label: quarterLabelJs(new Date(q.quarter_start + 'T00:00:00')),
+    done_count: q.targets.filter(t=>t.done).length, total: q.targets.length };
+}
 
 // ---------- api ----------
 function showStatus(html) {
@@ -173,51 +241,47 @@ function showStatus(html) {
 }
 function hideStatus() { document.getElementById('status').classList.add('hidden'); }
 
-// Free-tier hosts spin the server down when idle; the first request wakes it but
-// can take ~30–50s. Retry the fetch (instead of failing silently) so the page
-// fills in once the server is up rather than showing a blank screen.
-async function fetchJson(url, tries = 30) {
-  for (let i = 0; i < tries; i++) {
-    try {
-      const r = await fetch(API + url, { cache: 'no-store' });
-      if (r.ok) return r.json();
-    } catch (_) { /* server still waking — retry below */ }
-    await new Promise(res => setTimeout(res, 2000));
-  }
-  throw new Error('Server did not respond.');
+// ---------- auth ----------
+function showLogin() {
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
 }
+function showApp() {
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+async function signIn() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-err');
+  const btn = document.getElementById('login-btn');
+  err.classList.add('hidden');
+  if (!email || !password) { err.textContent = 'Enter your email and password.'; err.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = 'Sign in';
+  if (error) { err.textContent = error.message; err.classList.remove('hidden'); }
+  // Success transitions via onAuthStateChange below.
+}
+async function signOut() { await sb.auth.signOut(); }
 
 async function load() {
-  showStatus('Waking the server &amp; loading… <span class="text-slate-400">(first load can take ~30s)</span>');
+  showStatus('Loading…');
   try {
-    const [w, win] = await Promise.all([
-      fetchJson('/api/weeks'),
-      fetchJson('/api/wins'),
+    const [w, win, q] = await Promise.all([
+      sb.from('weeks').select('*'),
+      sb.from('wins').select('*'),
+      sb.from('quarters').select('*'),
     ]);
-    WEEKS = w.weeks;
-    WINS = win.wins;
-    // Quarters may not be migrated in Supabase yet — degrade gracefully (server
-    // is already awake here, so a single try fails fast) rather than breaking
-    // the whole page if the table is missing.
-    try { QUARTERS = (await fetchJson('/api/quarters', 1)).quarters; }
-    catch (_) { QUARTERS = []; }
+    if (w.error || win.error || q.error) throw (w.error || win.error || q.error);
+    WEEKS = (w.data || []).map(decorateWeek).sort((a,b)=>b.week_start.localeCompare(a.week_start));
+    WINS = (win.data || []).map(decorateWin).sort((a,b)=>b.week_start.localeCompare(a.week_start));
+    QUARTERS = (q.data || []).map(decorateQuarter).sort((a,b)=>b.quarter_start.localeCompare(a.quarter_start));
     hideStatus();
     render();
   } catch (e) {
-    showStatus('Couldn’t reach the server. <button onclick="load()" class="font-semibold text-indigo-600 hover:text-indigo-700">Retry</button>');
+    showStatus('Couldn’t load your data. <button onclick="load()" class="font-semibold text-indigo-600 hover:text-indigo-700">Retry</button>');
   }
-}
-async function api(method, url, body) {
-  const r = await fetch(API+url, {
-    method,
-    headers: body ? {'Content-Type':'application/json'} : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(()=>({detail:'Request failed'}));
-    throw new Error(e.detail || 'Request failed');
-  }
-  return r.json();
 }
 
 // ---------- render ----------
@@ -673,9 +737,13 @@ async function submitQuarter(kind) {
     return;
   }
   err.classList.add('hidden');
-  const quarter_start = toIsoDate(kind === 'next' ? nextQuarterStart() : currentQuarterStart());
+  const qs = kind === 'next' ? nextQuarterStart() : currentQuarterStart();
   try {
-    await api('POST','/api/quarters',{quarter_start, targets: vals});
+    const { error } = await sb.from('quarters').insert({
+      id: quarterId(qs), quarter_start: toIsoDate(qs),
+      targets: vals.map(t=>({ text:t, done:false, done_at:null })),
+    });
+    if (error) throw new Error(error.code==='23505' ? 'Targets for this quarter already exist.' : error.message);
     await load();
   } catch(e) {
     err.textContent = e.message;
@@ -685,10 +753,11 @@ async function submitQuarter(kind) {
 
 async function toggleTarget(qid, idx) {
   const q = QUARTERS.find(x=>x.id===qid);
-  if (q) { const t=q.targets[idx]; t.done=!t.done; t.done_at=t.done?new Date().toISOString():null;
-    q.done_count = q.targets.filter(x=>x.done).length; render(); }
-  try { await api('POST',`/api/quarters/${qid}/targets/${idx}/toggle`); await load(); }
-  catch(e){ load(); }
+  if (!q) return;
+  const t = q.targets[idx]; t.done = !t.done; t.done_at = t.done ? new Date().toISOString() : null;
+  q.done_count = q.targets.filter(x=>x.done).length; render();   // optimistic
+  const { error } = await sb.from('quarters').update({ targets: q.targets }).eq('id', qid);
+  if (error) load();   // reload to revert on failure
 }
 
 function startQuarterEdit(qid) { editingQuarterId = qid; render(); document.getElementById('qe0')?.focus(); }
@@ -704,9 +773,9 @@ async function saveQuarterEdits(qid) {
     return;
   }
   try {
-    for (let i=0;i<3;i++) {
-      if (vals[i] !== q.targets[i].text) await api('PATCH',`/api/quarters/${qid}/targets/${i}`,{text:vals[i]});
-    }
+    const targets = q.targets.map((t,i)=>({ ...t, text: vals[i] }));
+    const { error } = await sb.from('quarters').update({ targets }).eq('id', qid);
+    if (error) throw new Error(error.message);
     editingQuarterId = null;
     await load();
   } catch(e) {
@@ -717,7 +786,7 @@ async function saveQuarterEdits(qid) {
 
 async function delQuarter(qid) {
   if (!confirm('Delete this quarter from the archive? This cannot be undone.')) return;
-  try { await api('DELETE',`/api/quarters/${qid}`); await load(); }
+  try { const { error } = await sb.from('quarters').delete().eq('id', qid); if (error) throw new Error(error.message); await load(); }
   catch(e){ alert(e.message); }
 }
 
@@ -734,9 +803,12 @@ async function submitWeek() {
   }
   err.classList.add('hidden');
   const ws = targetWeekStart();
-  const week_start = `${ws.getFullYear()}-${String(ws.getMonth()+1).padStart(2,'0')}-${String(ws.getDate()).padStart(2,'0')}`;
   try {
-    await api('POST','/api/weeks',{week_start, priorities: vals});
+    const { error } = await sb.from('weeks').insert({
+      id: isoWeekId(ws), week_start: toIsoDate(ws),
+      priorities: vals.map(t=>({ text:t, done:false, done_at:null })),
+    });
+    if (error) throw new Error(error.code==='23505' ? 'Priorities for this week already exist.' : error.message);
     await load();
   } catch(e) {
     err.textContent = e.message;
@@ -745,12 +817,12 @@ async function submitWeek() {
 }
 
 async function toggle(wid, idx) {
-  // optimistic
   const w = WEEKS.find(x=>x.id===wid);
-  if (w) { const p=w.priorities[idx]; p.done=!p.done; p.done_at=p.done?new Date().toISOString():null;
-    w.done_count = w.priorities.filter(x=>x.done).length; render(); }
-  try { await api('POST',`/api/weeks/${wid}/priorities/${idx}/toggle`); await load(); }
-  catch(e){ load(); }
+  if (!w) return;
+  const p = w.priorities[idx]; p.done = !p.done; p.done_at = p.done ? new Date().toISOString() : null;
+  w.done_count = w.priorities.filter(x=>x.done).length; render();   // optimistic
+  const { error } = await sb.from('weeks').update({ priorities: w.priorities }).eq('id', wid);
+  if (error) load();   // reload to revert on failure
 }
 
 function startWeekEdit() { editingWeek = true; renderCurrent(); document.getElementById('ep0')?.focus(); }
@@ -766,9 +838,9 @@ async function saveWeekEdits(wid) {
     return;
   }
   try {
-    for (let i=0;i<3;i++) {
-      if (vals[i] !== w.priorities[i].text) await api('PATCH',`/api/weeks/${wid}/priorities/${i}`,{text:vals[i]});
-    }
+    const priorities = w.priorities.map((p,i)=>({ ...p, text: vals[i] }));
+    const { error } = await sb.from('weeks').update({ priorities }).eq('id', wid);
+    if (error) throw new Error(error.message);
     editingWeek = false;
     await load();
   } catch(e) {
@@ -779,7 +851,7 @@ async function saveWeekEdits(wid) {
 
 async function delWeek(wid) {
   if (!confirm('Delete this week from the archive? This cannot be undone.')) return;
-  try { await api('DELETE',`/api/weeks/${wid}`); await load(); }
+  try { const { error } = await sb.from('weeks').delete().eq('id', wid); if (error) throw new Error(error.message); await load(); }
   catch(e){ alert(e.message); }
 }
 
@@ -792,9 +864,10 @@ async function submitWin() {
     return;
   }
   err.classList.add('hidden');
-  const week_start = toIsoDate(winWeekStart());
+  const ws = winWeekStart();
   try {
-    await api('POST','/api/wins',{week_start, text});
+    const { error } = await sb.from('wins').insert({ id: isoWeekId(ws), week_start: toIsoDate(ws), text });
+    if (error) throw new Error(error.code==='23505' ? 'A win for this week already exists.' : error.message);
     await load();
   } catch(e) {
     err.textContent = e.message;
@@ -814,7 +887,8 @@ async function saveWinEdit(wid) {
     return;
   }
   try {
-    await api('PATCH',`/api/wins/${wid}`,{text});
+    const { error } = await sb.from('wins').update({ text }).eq('id', wid);
+    if (error) throw new Error(error.message);
     editingWin = false;
     await load();
   } catch(e) {
@@ -825,13 +899,23 @@ async function saveWinEdit(wid) {
 
 async function delWin(wid) {
   if (!confirm('Delete this win from the archive? This cannot be undone.')) return;
-  try { await api('DELETE',`/api/wins/${wid}`); await load(); }
+  try { const { error } = await sb.from('wins').delete().eq('id', wid); if (error) throw new Error(error.message); await load(); }
   catch(e){ alert(e.message); }
 }
 
 function escapeHtml(s){ return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-load();
+// React to auth state: show the app + load on sign-in/restore, else show login.
+sb.auth.onAuthStateChange((event, session) => {
+  if (!session) { showLogin(); return; }
+  showApp();
+  if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') load();
+});
+
+// PWA: register the service worker (no-op where unsupported).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>

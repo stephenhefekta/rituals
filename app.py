@@ -3,13 +3,30 @@ from pathlib import Path
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 import store
 from store import StoreError
 
 app = FastAPI()
+
+_STATIC = Path(__file__).parent / "static"
+
+# PWA assets — served at the web root so the same paths work whether the app is
+# behind this server (desktop) or a static host (phone).
+app.mount("/icons", StaticFiles(directory=_STATIC / "icons"), name="icons")
+
+
+@app.get("/manifest.json")
+async def manifest():
+    return FileResponse(_STATIC / "manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(_STATIC / "sw.js", media_type="text/javascript")
 
 
 @app.exception_handler(StoreError)
