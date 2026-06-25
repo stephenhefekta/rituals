@@ -2,7 +2,7 @@
 // Navigations are network-first (so a stale/redirected cache entry can never
 // brick the site); only the offline fallback comes from cache. Supabase traffic
 // is never touched. Bump CACHE on any shell change to replace older versions.
-const CACHE = 'focus-shell-v2';
+const CACHE = 'focus-shell-v3';
 // NB: precache '/' (the canonical URL) — never '/index.html', which Cloudflare
 // Pages 308-redirects to '/'. Caching a redirected response and serving it for a
 // navigation triggers a hard ERR_FAILED in Chrome.
