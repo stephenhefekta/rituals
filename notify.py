@@ -31,7 +31,7 @@ from pathlib import Path
 NOTIFIER = (Path.home() / "Applications" / "Focus Notifier.app"
             / "Contents" / "MacOS" / "RitualsNotifier")
 
-# .env locations, in precedence order (matches store.py: project dir first).
+# .env locations, in precedence order (project dir first, then ~/.rituals).
 ENV_FILES = (Path(__file__).parent / ".env", Path.home() / ".rituals" / ".env")
 
 
